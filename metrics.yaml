@@ -1,0 +1,69 @@
+# ─────────────────────────────────────────────────────────────────
+# Open Semantic Layer — Metric Definitions
+# Repository: github.com/org/osl-metrics
+# All changes require PR review before merge.
+# ─────────────────────────────────────────────────────────────────
+
+version: "1.0"
+
+metrics:
+
+  - name: monthly_recurring_revenue
+    label: "Monthly Recurring Revenue"
+    description: >
+      Total settled payment volume in EUR for the current calendar month.
+      FX conversion applied at daily ECB rate at time of settlement.
+    type: sum
+    sql: |
+      SUM(payments.amount_eur)
+      FILTER (
+        WHERE payments.status = 'settled'
+        AND DATE_TRUNC('month', payments.settled_at) = DATE_TRUNC('month', CURRENT_DATE)
+      )
+    source_table: payments
+    owner: data-engineering
+    last_modified: "2026-03-14"
+    freshness_sla: "4h"
+    confidence: high
+    tags: [revenue, finance, kpi]
+
+  - name: fraud_rate
+    label: "Fraud Rate (%)"
+    description: >
+      Percentage of transactions flagged as fraudulent in the current month.
+      Numerator: transactions where is_fraud = true.
+      Denominator: all transactions with status != 'pending'.
+    type: ratio
+    sql: |
+      ROUND(
+        COUNT(t.id) FILTER (WHERE t.is_fraud = true)
+        / NULLIF(COUNT(t.id) FILTER (WHERE t.status != 'pending'), 0)
+        * 100,
+        4
+      )
+    source_table: transactions
+    owner: risk-team
+    last_modified: "2026-03-10"
+    freshness_sla: "1h"
+    confidence: high
+    tags: [fraud, risk, kpi]
+
+  - name: active_merchants
+    label: "Active Merchants"
+    description: >
+      Count of distinct merchants who processed at least one settled
+      transaction in the past 30 days.
+      NOTE: window changed from 14d → 30d in PR #247 (pending review).
+    type: count_distinct
+    sql: |
+      COUNT(DISTINCT merchant_id)
+      FROM transactions
+      WHERE settled_at >= NOW() - INTERVAL '30 days'
+      AND status = 'settled'
+    source_table: transactions
+    owner: data-engineering
+    last_modified: "2026-03-18"
+    freshness_sla: "1h"
+    confidence: medium
+    pending_pr: 247
+    tags: [merchants, growth]
